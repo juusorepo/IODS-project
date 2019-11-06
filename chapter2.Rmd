@@ -1,7 +1,109 @@
-# Insert chapter 2 title here
+# 2 Linear Regression {.tabset}
 
-*Describe the work you have done this week and summarize your learning.*
+*Description of the work for this week*
 
-- Describe your work and results clearly. 
-- Assume the reader has an introductory course level understanding of writing and reading R code as well as statistical methods.
-- Assume the reader has no previous knowledge of your data or the more advanced methods you are using.
+The data is based on an International survey of Approaches to Learning.
+It was gathered in 2014-2015 in Finland by Kimmo Vehkalahti
+I have prepared a subdataset to for this analysis. It consists of **166 respondent and 7 variables.**
+Background variables include age and gender of the students.
+Measures include Points (overall), Attitude (towards statistics) and three measures of learning styles: Deep, Strategic and Surface. [see more](https://www.mv.helsinki.fi/home/kvehkala/JYTmooc/JYTOPKYS2-meta.txt)
+
+## 1. Read data
+
+```{r}
+# Read data
+library(dplyr)
+lr14 <- read.csv("learning2014.csv")
+lr14 <- select(lr14, -1)
+head(lr14)
+str(lr14)
+dim(lr14)
+```
+
+
+## 2 Explore the data
+
+```{r}
+# EDA
+library(ggplot2)
+library(GGally)
+# ggpairs for good overview
+p3 = ggpairs(lr14, aes(col=gender), lower = list(combo = wrap("facethist", bins = 20)))
+p3
+```
+
+**Some observations:**
+
+  - The majority of respondents are females (red color) and under 30-year-olds (bar chart).
+  - The variance of Points is greater among women, although the mean is quite the same (boxplot).
+  - The highest correlations are between Attitude and Points (0.437) & surf and deep (-0.324) (correlations).
+
+```{r}
+# Bubble chart
+p4 = ggplot(lr14, aes(x=Attitude, y=Points, size=stra, col=gender)) + geom_point(alpha=0.7) + scale_size(range = c(.1, 12), name="stra")
+p4
+```
+
+**Some observations:**
+
+  - There seems to be positive linear relationship between Points and Attitude
+  - This seems to be true for both females (red) and males (green)
+  - Females score lower both in Points and in Attitude
+  - stra (the size of the bubble) doesnt tell much
+
+
+## 3 Linear regression
+
+The dependent variable was Points. In the first model, the explanatory variables were Attitude, stra and deep. According to the results, only Attitude had significant relationship with the target variable. Thus, I made a new, simple linear regression model with only Attitude as an explanatory variable. The summaries of both models below.
+
+**Interpretation of the statistical test:**
+
+  - p-value for the model is less than .001 so the model is statistically significant.
+  - p-value for Attitude is less than .001 so its relationship with the target variable is statistically significant.
+
+```{r}
+model_1 <- lm(Points ~ Attitude + stra + deep, data = lr14)
+summary(model_1)
+
+model_2 <- lm(Points ~ Attitude, data = lr14)
+summary(model_2)
+
+```
+
+
+
+
+## 4 Model interpretation
+
+Multiple R-squared in simple linear regression is just the square of the correlation coefficient between the two variables, 0.19. This means that 19% of the variance in points is explained by Attitude.
+The Estimate for Attitude means that when Points increase with 1, Attitude increases approximately 0.35. There is a positive linear relationship, as can be seen also in the plot below.
+
+```{r}
+qplot(Points, Attitude, data = lr14) + geom_smooth(method = "lm")
+```
+
+
+## 5 Model diagnostics
+
+Is the model in line with the assumptions of linear regression? This is explored with the three plots below.
+
+  1 Are the residuals normally distributed? From the QQ-plot we can see that there is a reasonable fit with the normality assumption.
+  
+  2 Do the errors have constant variance? In other words, the variance should not depend on the explanatory variable. Residuals vs Fitted -plot shows, that the variance does not increase when the fitted values increase.
+  
+  3 Is there too high of an impact with certain observations? From Residuals vs. Leverage -plot we can see, that the highest leverage being less than .05 we don't have to worry that simple observations have too much power in the model.
+
+
+
+```{r}
+# Model diagnostics
+# Using par-fuction to place following 4 graphs to the same plot
+par(mfrow = c(2,2))
+plot(model_2, which = c(1,2,5))
+```
+
+
+
+
+
+
