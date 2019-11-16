@@ -1,0 +1,138 @@
+# 3 Logistic Regression {.tabset}
+
+Logistic regression analysis with student alcohol consumption data.
+
+This survey data is from secondary education of two Portuguese schools. It includes x variables about  student achievement, alcoholc consumption etc. 
+Data source and more information here:
+https://archive.ics.uci.edu/ml/datasets/Student+Performance 
+
+##  Explore the data
+Let's read the wrangled data and print out the variable names:
+
+```{r}
+alc <- read.csv(file ="~/IODS-project/data/alc.csv")
+variable.names(alc)
+```
+
+In this analysis, I will take four variables and look at their relationship to alcohol consumption. The exlanatory variable are: age, gender, address and absences. My hypotheses is that males, older students, student living is urban areas and student with more absences are more probaple to have high alcohol consumption.  
+
+### Explore the distributions
+
+```{r}
+# Let's get the selected variables and look at their scales and distributions
+library(tidyr); library(dplyr); library(ggplot2); library(GGally)
+selected <- c("high_use","age", "sex", "address", "absences")
+alcs <- select(alc, one_of(selected))
+gather(alcs) %>% glimpse()
+gather(alcs) %>% ggplot(aes(value)) + facet_wrap("key", scales="free") + geom_bar()
+                        
+```
+
+
+
+```{r}
+# Testing skim(), an alternative to summary()
+library(skimr)
+skim(alcs)
+```
+
+
+
+```{r}
+# Explore the relationship of high alcohol use with other variables
+
+p1 <- ggplot(alcs, aes(x=high_use, y=absences)) 
+p2 <- ggplot(alcs, aes(x=high_use, y=age))
+p3 <- ggplot(alcs, aes(address, fill=high_use))
+p4 <- ggplot(alcs, aes(sex, fill=high_use))
+
+p1 + geom_boxplot()
+p2 + geom_boxplot()
+p3 + geom_bar()
+p4 + geom_bar()
+
+table(alcs$high_use, alc$sex)
+table(alcs$high_use, alc$address)
+```
+
+Based on the explorations, it looks like one of the hypotheses will fail. It looks like there are more heavy drinkers among rural compared to urbam students.
+
+On the next tab, we will get our hand dirty with the regression model.
+
+
+## Build Logistic regression
+
+```{r}
+# build the model
+m <- glm(data=alcs, high_use ~ sex + address + absences + age, family="binomial")
+summary(m)
+
+```
+
+Interpretation: The estimate for the inercept is -4.00961, that is to log odds of being a high alcohol user and female, urban  address, zero absences and youngest in the sample. From log odds we can calculate the odds by exponenting the estimate, that is -16. The other estimates tell us how much the log odds change if the explanatory variable changes. For example, if the absences (continous variable) increase by 1, the log odds increase .09283. As sex is a dichotomous variable, that coefficient 0.98222 is a log odds ratio between the female and the male group.  
+
+Z-value is a results of a statistical test which tells whether the variables power is statistically significant in the model (if z is >2 or <-2). p-value tells quite the same. We can see, that sex and absences are statistically significant predictors.
+
+
+```{r}
+# build a new model with only significant predictors
+m2 <- glm(data=alcs, high_use ~ sex + absences, family="binomial")
+
+# calculate odd ratios by exponenting the coefficients of the model 
+OR <- coef(m2) %>% exp
+# and the same for confidence intervals
+CI <- confint(m2) %>% exp
+# print them out
+cbind(OR, CI)
+```
+
+According to the odds ratio, males are 2.6 times more likely to be high users of alcohol.
+For every absence, the probability that the student is a heavy drinker is 1.1 times more likely.
+
+.
+
+## Explore the predictive power
+
+```{r}
+# Use prdeict() to compute probabilites based on the logit model. 
+# type maked the probalities be probalities instead of log of odds, the default
+probabilities <- predict(m2, type="response")
+# add the probs in the data frame
+alcs <- mutate (alcs, probs = probabilities)
+# use the probs to make a prediction of high use
+# threshold will be set to .5. If we want less false positives, we should increase the threshold
+alcs <- mutate(alcs, prediction = probs > .5)
+# crosstabs the target versus predictions
+table(high_use = alcs$high_use, prediction = alcs$prediction)
+# plot
+ggplot(alcs, aes(x = probs, y = high_use, col = prediction)) + geom_point()
+
+```
+
+The confusion matrix shows, that there are quite a lot of false positives (n=31) and false negatives (n=73)
+
+
+```{r}
+loss_func <- function(class, prob) {
+  n_wrong <- abs(class - prob) > 0.5
+  mean(n_wrong)
+}
+# call the function to compute the average of wrong predictions
+loss_func(class = alcs$high_use, prob = alcs$prediction)
+```
+
+The loss function calculates the average n. of wrong predictions, that is the training error.
+In this case the prediction is wrong in 27,2% cases. It's still better than flipping a coin.
+
+```{r}
+# 10-fold cross-validation for the model
+library(boot)
+cv <- cv.glm(data = alcs, cost = loss_func, glmfit = m, K = 10)
+# cv.glm computes the error and stores it in delta, print delta
+cv$delta[1]
+```
+
+Accoring to 10-fold cross-validation, average number of wrong predictions is 0.25.
+Thus, my model is a bit better than the one in DataCamp (error .26). Wohoo!
+
+.
