@@ -1,0 +1,191 @@
+# 4 Clustering and classification 
+
+Today we are first building a Linear Discriminant Model and testing its predictive power.
+Last week we used logistic regression to predict two categories (true/false). 
+When we have more two, we can use LDA. It focuses on maximizing the separability among known categories.
+It is a supervized classification method, in contrast to K-means clustering, which is an unsupervized method. 
+We will try that in the end of this exercise.
+
+
+## Load and explore the dataset
+
+
+```{r}
+# load the Boston data and explore
+library(MASS)
+data("Boston")
+dim(Boston)
+summary(Boston)
+str(Boston)
+```
+
+The Boston Housing Dataset consists of price of houses in various places in Boston. Alongside with price, the dataset also provide information such as Crime (CRIM), areas of non-retail business in the town (INDUS), the age of people who own the house (AGE), 
+The data frame has 506 rows and 14 columns. 
+
+
+```{r}
+# 3 Graphical overview
+library(tidyverse)
+library(corrplot)
+cor_matrix <- cor(Boston) 
+cor_matrix %>% round(2)
+# significance tests for corr matrix
+res <- cor.mtest(Boston, conf.level = .95)
+# draw the corrplot with sig levels
+corrplot(cor_matrix, p.mat = res$p, insig = "label_sig", sig.level = c(.001, .01, .05), pch.cex = .9, pch.col = "white", method="color", type="upper")
+```
+
+The plot shows a lot of high correlations in the dataset. Negative correlation are in red and positive in blue. The plot includes also the p-values from the significance tests, marked with asterisks. We see for example, that RAD has very high negative correlation with AGE, NOX and INDUS, all with a high statistical significance (*** means p <. 001).
+
+```{r}
+library(ggplot2)
+library(purrr)
+# keeo() drops all factor variables from plotting
+# gather() unpivots data to key - value pairs
+# ggplot () draws densityplot from all remaining variables
+Boston %>% keep(is.numeric) %>% gather() %>% 
+  ggplot(aes(value)) + facet_wrap(~ key, scales = "free") + geom_density()
+
+```
+
+The distributions of all variables are shown above. Only RM and MEDV are close to normal distribution.
+ 
+## Stardardize the dataset and create the categorical target variable 
+ 
+```{r}
+# scale all variables and convert into dataframe format
+boston_scaled <- scale(Boston)
+boston_scaled <- as.data.frame(boston_scaled)
+summary(boston_scaled)
+
+```
+ 
+```{r}
+# create a quantile vector / categorical variable from CRIM (crime rate)
+bins <- quantile(boston_scaled$crim)
+crimelabels <- c()
+crime <- cut(boston_scaled$crim, breaks = bins, include.lowest = TRUE, labels = c("low", "med_low", "med_high", "high"))
+# add the new CRIME to the dataset
+boston_scaled$crime <- crime
+table(crime)
+
+```
+The data is now split into four quartiles based on the crime rate.
+Vector Crime was added to the dataframe.
+
+
+# Divide into train and test datasets
+
+```{r}
+# divide the dataset to train and test
+# count the n of rows
+n <- nrow(boston_scaled)
+# random select 80% of rows and save row numbers into IND
+ind <- sample(n, size = n * 0.8)
+# create train and test datasets based on IND
+train <- boston_scaled[ind,]
+test <- boston_scaled[-ind,]
+```
+
+## Build the LDA model 
+
+```{r}
+
+# drop the rows with missing values in CRIME
+train <- train[complete.cases(crime),]
+# create the LDA model with crime as target and all other variables (~.) as predictors
+lda.fit <- lda(crime ~., data = train)
+lda.fit
+
+```
+
+Results show the group-specific means for each covariate, for which the LDA tries to maximize the difference between groups.
+
+Proportion of trace tells the between between-group variance. Thus, LD1 explains 96% of the between-group variance.
+```{r}
+# draw the LDA(bi) plot
+# the function for lda biplot arrows
+lda.arrows <- function(x, myscale = 1, arrow_heads = 0.1, color = "red", tex = 0.75, choices = c(1,2)){
+  heads <- coef(x)
+  arrows(x0 = 0, y0 = 0, 
+         x1 = myscale * heads[,choices[1]], 
+         y1 = myscale * heads[,choices[2]], col=color, length = arrow_heads)
+  text(myscale * heads[,choices], labels = row.names(heads), 
+       cex = tex, col=color, pos=3)
+}
+
+# target classes as numeric
+classes <- as.numeric(train$crime)
+
+# plot the lda results
+plot(lda.fit, dimen = 2, col = classes, pch = classes)
+lda.arrows(lda.fit, myscale = 1)
+```
+
+We can see, that the category "high" is best separated. From the numeric results we saw, that LD1 (x-axis) explained 95% of the between-group variance.
+
+## Predict the classes with the LDA model
+
+```{r}
+# save the correct classes from test data
+correct_classes <- test$crime
+# drop the original CRIM variable
+test <- dplyr::select(test, -crime)
+# Predict LDA
+lda.pred <- predict(lda.fit, newdata = test)
+table(correct = correct_classes, predicted = lda.pred$class)
+```
+
+The table shows the actual and predicted categories. The model predicts best the category of highs  - aligned with the graphical observation above. With other categories there are errors, but majority is correct. 
+
+## 7 Distances and k-means
+
+```{r}
+
+# Load the data again and standardize it
+data(Boston)
+boston_sc <- scale(Boston)
+# Compute distances (Euclidean is the default)
+dist_eu <- dist(boston_sc)
+dist_man <- dist(boston_sc, method="manhattan")
+summary(dist_eu)
+summary(dist_man)
+
+```
+
+
+### K-means clustering
+```{r}
+km <- kmeans(boston_sc, centers = 4)
+```
+
+Well that was simple. Let's see what is the best number of clusters with a qplot. 
+
+```{r}
+# K-means might produce different results every time, because it randomly assigns the initial cluster centers. The function set.seed() can be used to deal with that.
+set.seed(123)
+# set the max number of clusters
+k_max <- 10
+# count the WCSS = within cluster sum of squares and plot it
+twcss <- sapply(1:k_max, function(k){kmeans(boston_sc, k)$tot.withinss})
+qplot(x = 1:k_max, y = twcss, geom = 'line')
+
+
+```
+
+WCSS is one method to find the optimal number off clusters. It tells how close the observations are to the cluster center. The optimal number of clusters is when the total WCSS drops radically. Based on the plot, the optimum number of clusters should be 2 (see x-axis). So let's run the clustering again with 2 centroids.
+
+### Visualize the clusters
+
+```{r}
+boston_sc <- as.data.frame(boston_sc)
+# run kmeans again with 2 centroids
+km <- kmeans(boston_sc, centers = 2)
+# visualize the clusters
+pairs(boston_sc[5:8], col = km$cluster)
+```
+
+So the data is divided to two clusters and the plotted with pairs. From the plot we can see for example, that the houses in the 1st cluster (in red) have
+- lower AGE and lower NOX (nitrogen oxides concentration) 
+- more rooms (RM, average number of rooms per dwelling), and higher distance to employment centers (DIS) 
+
