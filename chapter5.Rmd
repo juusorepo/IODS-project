@@ -1,0 +1,183 @@
+# 5 Dimensionality reduction
+
+This week we analyse the "Human" dataset. In short, it includes human development indicators (columns) from countries (rows).
+See more: http://hdr.undp.org/en/content/human-development-index-hdi
+
+```{r}
+library(purrr)
+library(ggplot2)
+library(tidyr)
+library(skimr)
+human <- read.csv("~/IODS-project/data/human.csv", row.names=1)
+```
+
+
+## EDA Exploring the dataset
+
+```{r}
+skim(human)
+```
+
+
+
+```{r}
+
+human %>% keep(is.numeric) %>% gather() %>% 
+  ggplot(aes(value)) + facet_wrap(~ key, scales = "free") + geom_density()
+
+
+```
+
+Our wrangled slice of the Human dataset includes 8 variables, all numerical.
+
+
+```{r}
+# correlation plot
+library(tidyverse)
+library(corrplot)
+cor_matrix <- cor(human) 
+cor_matrix %>% round(2)
+# significance tests for corr matrix
+res <- cor.mtest(human, conf.level = .95)
+# draw the corrplot with sig levels
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(cor_matrix, method = "color", col = col(200),
+         type = "upper", order = "hclust", number.cex = .7,
+         addCoef.col = "grey20", # Add coefficient of correlation
+         tl.col = "black", tl.srt = 90, # Text label color and rotation
+         # Combine with significance, set visible sig level
+         p.mat = res$p, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag = FALSE)
+
+
+
+```
+
+Maternal mortality and Adolescence birth rate have high negative correlations with other indicators, excluding the variables labFMratio and repinp. Variables gni, eye, le and edu2fmratio are all positively correlated with each other.
+
+## Principal Component Analysis
+
+First PCA with non-standardized data
+
+```{r}
+pca_human1 <- prcomp(human)
+biplot(pca_human1, choices = 1:2, cex = c(0.6, 1), col = c("grey20", "red"))
+```
+
+Second PCA with stardardized variables
+
+```{r}
+# scale the variables
+human_std <- scale(human)
+# run PCA, round the results
+pca_human2 <- prcomp(human_std)
+s <- summary(pca_human2)
+pca_pr <- round(100*s$importance[2, ], digits = 1)
+pca_pr
+```
+
+The figures show how much of the variance of all variables each principal component explain.
+
+
+```{r}
+# create object pc_lab to be used as axis labels
+pc_lab <- paste0(names(pca_pr), " (", pca_pr, "%)")
+# draw a biplot
+par(mfrow = c(1,2))
+biplot(pca_human1, choices = 1:2, cex = c(0.6, 1), col = c("grey20", "red"))
+biplot(pca_human2, xlab = pc_lab[2], ylab = pc_lab[1], choices = 1:2, cex = c(0.8, 1), col = c("grey20", "blue"))
+```
+
+The non-standardized plot is not much helpful, because variables power is related to their scale. For example, the mean of gni
+is 17600, whereas other variables has mean value less than 100, some of them less than 1. This explains the long length of the gni arrow in the plot.
+
+Standardized data: Like we saw from the correlation plot, maternal mortality and adolescent birth rate are highly related. In the biplot, if the arrows are close to one another, variables have high correlation. 
+
+The first principal component (PC1) simplifies the picture as follows: There is a continuum, where in another end there are countries with high maternal mortality and adolescent birth rate, and in the opposite end high life expectancy, more years in education, and better F/M ratio in secondary education.
+
+The plot shows how the countries (rows) align with dimensions. For example, there are countries with have high maternal mortality and adolescene birth rate, but still score high is  gender equality regarding labour and politics (PC2). The index number of these countries are seen in the upper left corner of the plot.
+
+**Interpretation of components**
+
+The first principal component (PC1) reflects the overall health and gender equality in the private sphere. 
+
+The second principal component (PC2) reflects gender equality in the public sphere. The higher the value of PC2, the higher the F/M ratio in labour and women representatives in parliament. 
+
+
+## MCA, Multiple Correspondence Analysis
+
+Using the Tea dataset from Factominer.
+
+```{r}
+library(FactoMineR)
+data(tea)
+dim(tea)
+str(tea)
+```
+
+```{r} 
+# select columns 1:8,13,19:25
+tea_time <- tea[,c(1:8,13,19:25)]
+str(tea_time)
+gather(tea_time) %>% ggplot(aes(value)) + geom_bar() + facet_wrap("key", scales = "free")
+```
+
+```{r}
+# run MCA
+# supplementary variables, var10 is age and numerical, var 11-16 chosen as categorical supplements (not included in creating the dimensions, but help in interpreting them)
+mca <- MCA(tea_time, quanti.sup = 10, quali.sup = 11:16, graph = FALSE)
+summary(mca)
+```
+
+Eigenvalues: First dimension explains 16.0, second 13.3 percent of the variance of the variables in the model.
+Individuals: rows in the data, showing first 10. If an individual is well projected in the dimension, the cos2 is close to 1
+eta2: If the value is close to 1, there is a strong link between the variable and the dimension.
+In dim1, strongest variables are tea.time and dinner, in Dim2, Tea and Home.
+
+Supplementary variables do not contribute to the dimensions (not included in the model), but correspondingly we can see how they are linked to dimensions.
+
+```{r}
+par (mfrow = c(2,2))
+plot.MCA(mca, invisible=c("var","quali.sup"), cex=0.7, title="Individuals")
+plot.MCA(mca, invisible=c("ind","quali.sup"), cex=0.7, title="Variables")
+plot.MCA(mca, invisible=c("ind", "var"), cex=0.7, title="Supplementary variables")
+plot.MCA(mca, invisible=c("quali.sup"), cex=0.7, habillage = "quali", title="Variables and individuals")
+
+# habillage = "quali" means one color is used for each categorical variables;
+
+```
+
+It is possible to plot the individuals and variables in different and in the same plot.
+From the plot we can see which variables define the dimensions. Distance from the origo represents power.
+
+```{r}
+# SelectMod="contrib 8" displays 8 variables with highest contribution to the dimensions
+# select = "contrib 3" shows the labels of 3 individuals that contribute the most to the dimensions
+plot.MCA(mca, invisible=c("quali.sup"), selectMod="contrib 8", select = "contrib 3", cex=0.7, title="Variables and individuals")
+
+
+```
+
+Here we can see the variables and individuals together. Only those with most contribution have labels to make the plot more readable. 
+
+
+```{r}
+plot.MCA(mca, choix="var", xlim=c(0,0.5), ylim=c(0,0.5))
+```
+
+This choix-version of the MCA-plot shows the links between variables and dimensions. 
+The value (for the categorical variables) is the squared correlation ratio between the dimension and the variable.
+So bigger value means stronger link with the dimension.
+
+```{r}
+plot.MCA(mca, invisible=c("quali.sup", "var"), select = "contrib 10", habillage = "Tea", cex=0.7, title="Individuals grouped by Tea type")
+
+
+```
+
+And finally, a grouped plot: based on Tea type, there seems to be quite clear clusters in the data.
+Green tea score high on Dim1 and mid on Dim2. That's understandable, as strongest variables in Dim1 where teatime and dinner.
+And in Dim2, breakfast and home - so Earl Grey it is.  
+
+

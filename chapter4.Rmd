@@ -1,4 +1,4 @@
-# 4 Clustering and classification 
+# 4 Clustering and classification {.tabset}
 
 Today we are first building a Linear Discriminant Model and testing its predictive power.
 Last week we used logistic regression to predict two categories (true/false). 
@@ -74,7 +74,7 @@ The data is now split into four quartiles based on the crime rate.
 Vector Crime was added to the dataframe.
 
 
-# Divide into train and test datasets
+## Divide into train and test datasets
 
 ```{r}
 # divide the dataset to train and test
